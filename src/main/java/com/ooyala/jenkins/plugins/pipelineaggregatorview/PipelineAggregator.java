@@ -1,12 +1,36 @@
 package com.ooyala.jenkins.plugins.pipelineaggregatorview;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+import javax.servlet.ServletException;
+
 import hudson.Extension;
-import hudson.model.*;
+import hudson.model.Api;
+import hudson.model.Item;
+import hudson.model.ListView;
+import hudson.model.ParameterValue;
+import hudson.model.ParametersAction;
+import hudson.model.Result;
+import hudson.model.Run;
+import hudson.model.TopLevelItem;
+import hudson.model.View;
+import hudson.model.ViewDescriptor;
 import hudson.scm.ChangeLogSet;
 import hudson.security.Permission;
 import hudson.util.RunList;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
+import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -15,17 +39,6 @@ import org.kohsuke.stapler.StaplerResponse;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
-import javax.servlet.ServletException;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
-
 /**
  * Created by paul on 20/09/16.
  */
@@ -33,218 +46,295 @@ import java.util.regex.PatternSyntaxException;
 @ExportedBean
 public class PipelineAggregator extends View {
 
-   private String viewName;
+	private String viewName;
 
-   private int fontSize;
+	private int fontSize;
 
-   private int buildHistorySize;
+	private int buildHistorySize;
 
-   private boolean useCondensedTables;
+	private boolean useCondensedTables;
 
-   public boolean isUseScrollingCommits() {
-      return useScrollingCommits;
-   }
+	public boolean isUseScrollingCommits() {
+		return useScrollingCommits;
+	}
 
-   public void setUseScrollingCommits(boolean useScrollingCommits) {
-      this.useScrollingCommits = useScrollingCommits;
-   }
+	public void setUseScrollingCommits(boolean useScrollingCommits) {
+		this.useScrollingCommits = useScrollingCommits;
+	}
 
-   private boolean useScrollingCommits;
+	private boolean useScrollingCommits;
 
-   private String filterRegex;
+	private String filterRegex;
 
-   @DataBoundConstructor
-   public PipelineAggregator(String name, String viewName) {
-      super(name);
-      this.viewName = viewName;
-      this.fontSize = 16;
-      this.buildHistorySize = 16;
-      this.useCondensedTables = false;
-      this.filterRegex = null;
-   }
+	private String paramsList;
 
-   protected Object readResolve() {
-      if (fontSize == 0)
-         fontSize = 16;
-      if (buildHistorySize == 0)
-         buildHistorySize = 16;
-      return this;
-   }
+	@DataBoundConstructor
+	public PipelineAggregator(String name, String viewName) {
+		super(name);
+		this.viewName = viewName;
+		this.fontSize = 16;
+		this.buildHistorySize = 16;
+		this.useCondensedTables = false;
+		this.filterRegex = null;
+		this.paramsList = null;
+	}
 
-   @Override
-   public Collection<TopLevelItem> getItems() {
-      return new ArrayList<TopLevelItem>();
-   }
+	protected Object readResolve() {
+		if (fontSize == 0) {
+			fontSize = 16;
+		}
+		if (buildHistorySize == 0) {
+			buildHistorySize = 16;
+		}
+		return this;
+	}
 
-   public int getFontSize() {
-      return fontSize;
-   }
+	@Override
+	public Collection<TopLevelItem> getItems() {
+		return new ArrayList<TopLevelItem>();
+	}
 
-   public int getBuildHistorySize() {
-      return buildHistorySize;
-   }
+	public int getFontSize() {
+		return fontSize;
+	}
 
-   public boolean isUseCondensedTables() {
-      return useCondensedTables;
-   }
+	public int getBuildHistorySize() {
+		return buildHistorySize;
+	}
 
-   public String getTableStyle() {
-      return useCondensedTables ? "table-condensed" : "";
-   }
+	public boolean isUseCondensedTables() {
+		return useCondensedTables;
+	}
 
-   public String getFilterRegex() {
-      return filterRegex;
-   }
+	public String getTableStyle() {
+		return useCondensedTables ? "table-condensed" : "";
+	}
 
-   @Override
-   protected void submit(StaplerRequest req) throws ServletException, IOException {
-      JSONObject json = req.getSubmittedForm();
-      this.fontSize = json.getInt("fontSize");
-      this.buildHistorySize = json.getInt("buildHistorySize");
-      this.useCondensedTables = json.getBoolean("useCondensedTables");
-      this.useScrollingCommits = json.getBoolean("useScrollingCommits");
-      if (json.get("useRegexFilter") != null) {
-         String regexToTest = req.getParameter("filterRegex");
-         try {
-            Pattern.compile(regexToTest);
-            this.filterRegex = regexToTest;
-         } catch (PatternSyntaxException x) {
-            Logger.getLogger(ListView.class.getName()).log(Level.WARNING, "Regex filter expression is invalid", x);
-         }
-      } else {
-         this.filterRegex = null;
-      }
-      save();
-   }
+	public String getFilterRegex() {
+		return filterRegex;
+	}
 
-   @Override
-   public Item doCreateItem(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
-      return Jenkins.getInstance().doCreateItem(req, rsp);
-   }
+	public String getParamsList() {
+		return paramsList;
+	}
 
-   @Override
-   public boolean contains(TopLevelItem item) {
-      return false;
-   }
+	@Override
+	protected void submit(StaplerRequest req) throws ServletException, IOException {
+		JSONObject json = req.getSubmittedForm();
+		this.fontSize = json.getInt("fontSize");
+		this.buildHistorySize = json.getInt("buildHistorySize");
+		this.useCondensedTables = json.getBoolean("useCondensedTables");
+		this.useScrollingCommits = json.getBoolean("useScrollingCommits");
+		this.paramsList = req.getParameter("paramsList");
+		if (json.get("useRegexFilter") != null) {
+			String regexToTest = req.getParameter("filterRegex");
+			try {
+				Pattern.compile(regexToTest);
+				this.filterRegex = regexToTest;
+			}
+			catch (PatternSyntaxException x) {
+				Logger.getLogger(ListView.class.getName()).log(Level.WARNING, "Regex filter expression is invalid", x);
+			}
+		}
+		else {
+			this.filterRegex = null;
+		}
+		save();
+	}
 
-   @Override
-   public boolean hasPermission(final Permission p) {
-      return true;
-   }
+	@Override
+	public Item doCreateItem(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
+		return Jenkins.getInstance().doCreateItem(req, rsp);
+	}
 
-   /**
-    * This descriptor class is required to configure the View Page
-    */
-   @Extension
-   public static final class DescriptorImpl extends ViewDescriptor {
-      @Override
-      public String getDisplayName() {
-         return
-            "Pipeline Aggregator View";
-      }
-   }
+	@Override
+	public boolean contains(TopLevelItem item) {
+		return false;
+	}
 
-   public Api getApi() {
-      return new Api(this);
-   }
+	@Override
+	public boolean hasPermission(final Permission p) {
+		return true;
+	}
 
-   @Exported(name = "builds")
-   public Collection<Build> getBuildHistory() {
-      Jenkins jenkins = Jenkins.getInstance();
-      List<WorkflowJob> jobs = jenkins.getAllItems(WorkflowJob.class);
-      Pattern r = filterRegex != null ? Pattern.compile(filterRegex) : null;
-      List<WorkflowJob> fJobs = filterJobs(jobs, r);
-      List<Build> l = new ArrayList();
-      RunList<WorkflowRun> builds = new RunList(fJobs).limit(buildHistorySize);
-      for ( WorkflowRun build : builds){
-         List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets = ((WorkflowRun) build).getChangeSets();
-         Result result = build.getResult();
-         l.add(new Build(build.getDisplayName(),
-            build.getFullDisplayName(),
-            build.getUrl(),
-            build.getNumber(),
-            build.getStartTimeInMillis(),
-            build.getDuration(),
-            result == null ? "BUILDING" : result.toString(), changeLogSets));
-      }
-      return l;
-   }
+	/**
+	 * This descriptor class is required to configure the View Page
+	 */
+	@Extension
+	public static final class DescriptorImpl extends ViewDescriptor {
 
-   public List<WorkflowJob> filterJobs(List<WorkflowJob> jobs, Pattern r) {
-      if(r == null)
-         return jobs;
-      for (Iterator<WorkflowJob> iterator = jobs.iterator(); iterator.hasNext(); ) {
-         WorkflowJob job = iterator.next();
-         WorkflowRun run = job.getLastBuild();
-         if (run != null) {
-            if (!r.matcher(run.getFullDisplayName()).find()) {
-               iterator.remove();
-            }
-         } else {
-            iterator.remove();
-         }
-      }
-      return jobs;
-   }
+		@Override
+		public String getDisplayName() {
+			return
+					"Pipeline Aggregator View";
+		}
+	}
+
+	public Api getApi() {
+		return new Api(this);
+	}
+
+	@Exported(name = "builds")
+	public Collection<Build> getBuildHistory() {
+		Jenkins jenkins = Jenkins.getInstance();
+		List<WorkflowJob> jobs = jenkins.getAllItems(WorkflowJob.class);
+		Pattern r = filterRegex != null ? Pattern.compile(filterRegex) : null;
+		final String[] params = StringUtils.split(paramsList, ";");
+		final Map<String, String> paramsMap = new HashMap<>();
+		for (final String param : params) {
+			final String[] kvs = StringUtils.split(param, "=");
+			if (kvs.length != 2) {
+				throw new IllegalArgumentException(String.format("%s is not a valid param def", param));
+			}
+			paramsMap.put(kvs[0], kvs[1]);
+		}
+		//List<WorkflowJob> fJobs = filterJobs(jobs, r);
+		List<WorkflowRun> fRuns = filterRuns(jobs, r, paramsMap);
+		List<Build> l = new ArrayList();
+		//RunList<WorkflowRun> builds = new RunList(fJobs).limit(buildHistorySize);
+		for (WorkflowRun build : fRuns) {
+			List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets = ((WorkflowRun) build).getChangeSets();
+			Result result = build.getResult();
+			l.add(new Build(build.getDisplayName(),
+					build.getFullDisplayName(),
+					build.getUrl(),
+					build.getNumber(),
+					build.getStartTimeInMillis(),
+					build.getDuration(),
+					result == null ? "BUILDING" : result.toString(), changeLogSets));
+		}
+		return l;
+	}
+
+	public List<WorkflowJob> filterJobs(List<WorkflowJob> jobs, Pattern r) {
+		if (r == null) {
+			return jobs;
+		}
+		for (Iterator<WorkflowJob> iterator = jobs.iterator(); iterator.hasNext(); ) {
+			WorkflowJob job = iterator.next();
+			WorkflowRun run = job.getLastBuild();
+			if (run != null) {
+				if (!r.matcher(run.getFullDisplayName()).find()) {
+					iterator.remove();
+				}
+			}
+			else {
+				iterator.remove();
+			}
+		}
+		return jobs;
+	}
+
+	public List<WorkflowRun> filterRuns(List<WorkflowJob> jobs, Pattern r, Map<String, String> paramsMap) {
+		List<WorkflowRun> runList = new ArrayList<>();
+		if (r == null) {
+			return runList;
+		}
+		for (Iterator<WorkflowJob> iterator = jobs.iterator(); iterator.hasNext(); ) {
+			WorkflowJob job = iterator.next();
+			//List<? extends Run> newRuns = StreamSupport.stream(job.getNewBuilds().spliterator(), false)
+			//		.sorted((r1, r2) -> r2.getTimestamp().compareTo(r1.getTimestamp()))
+			//		.collect(Collectors.toList());
+			RunList runs = job.getNewBuilds();
+			boolean runFound = false; // If a run has found for this job
+			if (runs != null) {
+				for (Iterator<? extends Run> itr = runs.iterator(); itr.hasNext(); ) {
+					if (runFound) {
+						break;
+					}
+					WorkflowRun run = (WorkflowRun) itr.next();
+					if (!r.matcher(run.getFullDisplayName()).find()) {
+						break;
+					}
+					if(paramsMap.isEmpty()) {
+						runList.add(run);
+						break;
+					}
+					ParametersAction paramAction = run.getAction(ParametersAction.class);
+					List<ParameterValue> values = paramAction == null ? null : paramAction.getAllParameters();
+					if (values != null) {
+						for (final ParameterValue value : values) {
+							if (paramsMap.containsKey(value.getName().toString()) && StringUtils.equals(paramsMap.get(value.getName().toString()), Objects.toString(value.getValue()))) {
+								runFound = true;
+								runList.add(run);
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+		return runList;
+	}
 
 
-   @ExportedBean(defaultVisibility = 999)
-   public static class Build {
-      @Exported
-      public String jobName;
-      @Exported
-      public String buildName;
-      @Exported
-      public String url;
-      @Exported
-      public int number;
-      @Exported
-      public long startTime;
-      @Exported
-      public long duration;
-      @Exported
-      public String result;
-      @Exported
-      public List<ChangeLog> changeLogSet;
+	@ExportedBean(defaultVisibility = 999)
+	public static class Build {
 
-      public Build(String jobName, String buildName, String url, int number, long startTime, long duration, String result, List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets) {
-         this.jobName = jobName;
-         this.buildName = buildName;
-         this.number = number;
-         this.startTime = startTime;
-         this.duration = duration;
-         this.result = result;
-         this.url = url;
+		@Exported
+		public String jobName;
 
-         this.changeLogSet = processChanges(changeLogSets);
-      }
+		@Exported
+		public String buildName;
 
-      private List<ChangeLog> processChanges(List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets) {
-         List<ChangeLog> changes = new ArrayList<>();
-         for (ChangeLogSet<? extends ChangeLogSet.Entry> set : changeLogSets) {
-            for (Object entry : set.getItems()) {
-               ChangeLogSet.Entry setEntry = (ChangeLogSet.Entry) entry;
-               String author = setEntry.getAuthor().getFullName();
-               String message = setEntry.getMsg();
-               changes.add(new ChangeLog(author, message));
-            }
+		@Exported
+		public String url;
 
-         }
-         return changes;
-      }
-   }
+		@Exported
+		public int number;
 
-   @ExportedBean(defaultVisibility = 999)
-   public static class ChangeLog {
-      @Exported
-      public String author;
-      @Exported
-      public String message;
+		@Exported
+		public long startTime;
 
-      public ChangeLog(String author, String message) {
-         this.author = author;
-         this.message = message;
-      }
-   }
+		@Exported
+		public long duration;
+
+		@Exported
+		public String result;
+
+		@Exported
+		public List<ChangeLog> changeLogSet;
+
+		public Build(String jobName, String buildName, String url, int number, long startTime, long duration, String result, List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets) {
+			this.jobName = jobName;
+			this.buildName = buildName;
+			this.number = number;
+			this.startTime = startTime;
+			this.duration = duration;
+			this.result = result;
+			this.url = url;
+
+			this.changeLogSet = processChanges(changeLogSets);
+		}
+
+		private List<ChangeLog> processChanges(List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets) {
+			List<ChangeLog> changes = new ArrayList<>();
+			for (ChangeLogSet<? extends ChangeLogSet.Entry> set : changeLogSets) {
+				for (Object entry : set.getItems()) {
+					ChangeLogSet.Entry setEntry = (ChangeLogSet.Entry) entry;
+					String author = setEntry.getAuthor().getFullName();
+					String message = setEntry.getMsg();
+					changes.add(new ChangeLog(author, message));
+				}
+
+			}
+			return changes;
+		}
+	}
+
+	@ExportedBean(defaultVisibility = 999)
+	public static class ChangeLog {
+
+		@Exported
+		public String author;
+
+		@Exported
+		public String message;
+
+		public ChangeLog(String author, String message) {
+			this.author = author;
+			this.message = message;
+		}
+	}
 }
 

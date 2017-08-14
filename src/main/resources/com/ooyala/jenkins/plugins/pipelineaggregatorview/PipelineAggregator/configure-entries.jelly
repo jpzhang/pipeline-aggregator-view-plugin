@@ -6,6 +6,9 @@
                 <f:textbox name="filterRegex" field="filterRegex" />
             </f:entry>
         </f:optionalBlock>
+        <f:entry title="${%Parameter list}">
+            <f:textbox name="paramsList" field="paramsList" />
+        </f:entry>
     </f:section>
     <f:section title="${%UI Settings}">
         <f:entry title="${%Font size}">
