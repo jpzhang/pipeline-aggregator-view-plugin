@@ -246,6 +246,9 @@ public class PipelineAggregator extends View {
 					if (!r.matcher(run.getFullDisplayName()).find()) {
 						break;
 					}
+					if(run.getResult().isWorseOrEqualTo(Result.NOT_BUILT)) {
+						break;
+					}
 					if(paramsMap.isEmpty()) {
 						runList.add(run);
 						break;
