@@ -188,11 +188,8 @@ public class PipelineAggregator extends View {
 			}
 			paramsMap.put(kvs[0], kvs[1]);
 		}
-		//List<WorkflowJob> fJobs = filterJobs(jobs, r);
 		List<WorkflowRun> fRuns = filterRuns(jobs, r, paramsMap);
-		List<Build> l = new ArrayList();
-		//RunList<WorkflowRun> builds = new RunList(fJobs).limit(buildHistorySize);
-		for (WorkflowRun build : fRuns) {
+		List<Build> l = new ArrayList();for (WorkflowRun build : fRuns) {
 			List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeLogSets = ((WorkflowRun) build).getChangeSets();
 			Result result = build.getResult();
 			l.add(new Build(build.getDisplayName(),
@@ -227,23 +224,16 @@ public class PipelineAggregator extends View {
 
 	public List<WorkflowRun> filterRuns(List<WorkflowJob> jobs, Pattern r, Map<String, String> paramsMap) {
 		List<WorkflowRun> runList = new ArrayList<>();
-		if (r == null) {
-			return runList;
-		}
-		for (Iterator<WorkflowJob> iterator = jobs.iterator(); iterator.hasNext(); ) {
-			WorkflowJob job = iterator.next();
-			//List<? extends Run> newRuns = StreamSupport.stream(job.getNewBuilds().spliterator(), false)
-			//		.sorted((r1, r2) -> r2.getTimestamp().compareTo(r1.getTimestamp()))
-			//		.collect(Collectors.toList());
-			RunList runs = job.getNewBuilds();
-			boolean runFound = false; // If a run has found for this job
+		for (final WorkflowJob job : jobs) {
+			final RunList runs = job.getNewBuilds(); // Only fetch the latest 100 runs
+			boolean runFound = false; // If a run matching search criteria has found for this job
 			if (runs != null) {
 				for (Iterator<? extends Run> itr = runs.iterator(); itr.hasNext(); ) {
 					if (runFound) {
 						break;
 					}
-					WorkflowRun run = (WorkflowRun) itr.next();
-					if (!r.matcher(run.getFullDisplayName()).find()) {
+					final WorkflowRun run = (WorkflowRun) itr.next();
+					if (r != null && !r.matcher(run.getFullDisplayName()).find()) {
 						break;
 					}
 					if(run.getResult().isWorseOrEqualTo(Result.NOT_BUILT)) {
@@ -253,8 +243,8 @@ public class PipelineAggregator extends View {
 						runList.add(run);
 						break;
 					}
-					ParametersAction paramAction = run.getAction(ParametersAction.class);
-					List<ParameterValue> values = paramAction == null ? null : paramAction.getAllParameters();
+					final ParametersAction paramAction = run.getAction(ParametersAction.class);
+					final List<ParameterValue> values = paramAction == null ? null : paramAction.getAllParameters();
 					if (values != null) {
 						for (final ParameterValue value : values) {
 							if (paramsMap.containsKey(value.getName().toString()) && StringUtils.equals(paramsMap.get(value.getName().toString()), Objects.toString(value.getValue()))) {
